@@ -10,11 +10,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
 
+    env:
+      ANDROID_HOME: ${{ github.workspace }}/gati_route_manager/.buildozer/android/platform/android-sdk
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -31,7 +34,7 @@ jobs:
         shell: bash
 
       - name: Cache Buildozer (Android SDK/NDK)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.buildozer
@@ -40,7 +43,19 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install --upgrade pip buildozer cython
+          pip install --upgrade pip buildozer cython setuptools
+        shell: bash
+
+      - name: Update SDK and accept licenses
+        run: |
+          cd gati_route_manager
+          buildozer android update || true
+          SDK_DIR=$HOME/.buildozer/android/platform/android-sdk
+          if [ -d "$SDK_DIR/cmdline-tools/latest/bin" ]; then
+            yes | $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --licenses 2>&1
+          elif [ -d "$SDK_DIR/tools/bin" ]; then
+            yes | $SDK_DIR/tools/bin/sdkmanager --licenses 2>&1
+          fi
         shell: bash
 
       - name: Build APK with Buildozer
@@ -48,11 +63,9 @@ jobs:
           cd gati_route_manager
           buildozer android debug 2>&1
         shell: bash
-        env:
-          BUILD_OZER_CI: "1"
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: GATI-Route-Manager-APK
           path: gati_route_manager/bin/*.apk
