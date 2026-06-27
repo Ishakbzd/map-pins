@@ -1,0 +1,295 @@
+# GATI Route Manager — Development Plan & Agentic Prompt
+
+## What the software does
+
+A Windows desktop application for Intelcom delivery operations.
+The driver or dispatcher drops a PDF manifest onto the app, picks the route they want,
+and gets back a Google My Maps-ready CSV plus a stop/package summary — in under 10 seconds,
+no manual copy-paste required.
+
+---
+
+## Development Plan
+
+### Stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| Language | Python 3.11+ | Fast to iterate, rich PDF/CSV libs, runs on any Windows machine |
+| UI framework | PyQt6 (or Tkinter for zero-install) | Native-feeling Windows window, drag-and-drop support |
+| PDF extraction | pdfplumber | Reliable table/text extraction from Intelcom-style PDFs |
+| CSV output | Python `csv` stdlib | UTF-8 BOM encoding for Google Maps compatibility |
+| Packaging | PyInstaller | Single `.exe`, no Python install needed on the driver's PC |
+
+---
+
+### Architecture — 4 modules
+
+```
+┌─────────────────────────────────────────┐
+│              UI Layer (PyQt6)           │
+│  Drop zone │ Route picker │ Results tab │
+└────────────────────┬────────────────────┘
+                     │
+┌────────────────────▼────────────────────┐
+│           PDF Parser Module             │
+│  - Open PDF with pdfplumber             │
+│  - Detect route blocks (GATI####)       │
+│  - Extract: Seq, Address, Postal, Code  │
+│  - Return list of Route objects         │
+└────────────────────┬────────────────────┘
+                     │
+┌────────────────────▼────────────────────┐
+│         Stop Deduplication Module       │
+│  - Group packages by (street, postal)   │
+│  - Count unique stops vs total packages │
+│  - Flag multi-package stops             │
+└────────────────────┬────────────────────┘
+                     │
+┌────────────────────▼────────────────────┐
+│           CSV Export Module             │
+│  - Write UTF-8 BOM CSV                  │
+│  - Columns: Stop, Full Address,         │
+│    Street, City, Province, Postal,      │
+│    Tracking ID, Package Code            │
+│  - One row per package (Maps geocodes)  │
+│  - Option: one row per unique stop      │
+└─────────────────────────────────────────┘
+```
+
+---
+
+### UI Flow
+
+```
+┌──────────────────────────────────────┐
+│  GATI Route Manager                  │
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │  Drop PDF here  (or Browse…)   │  │
+│  └────────────────────────────────┘  │
+│                                      │
+│  Routes found in this file:          │
+│  ☑ GATI9250  (121 pkgs)             │
+│  ☑ GATI9255  (119 pkgs)             │
+│  ☑ GATI9275  (121 pkgs)             │
+│                                      │
+│  [Export selected routes]            │
+│                                      │
+│  ─────────────────────────────────── │
+│  GATI9275 — 121 packages / 101 stops │
+│  Multi-package stops:                │
+│    27 rue du Lacaune  ×5 (seq 5–9)  │
+│    2015 rue Saint-Louis  ×5 (109–113)│
+│    ...                               │
+│                                      │
+│  [Open output folder]                │
+└──────────────────────────────────────┘
+```
+
+---
+
+### File output (per selected route)
+
+```
+Gatineau_GATI9275_Route.csv       ← Google My Maps import file
+Gatineau_GATI9275_Summary.txt     ← Stop count, multi-package list
+```
+
+---
+
+### Milestones
+
+| # | Milestone | Deliverable |
+|---|-----------|-------------|
+| 1 | PDF parsing | Script that reads any GATI PDF and returns structured data |
+| 2 | Route detection | Auto-detects all route codes in the file |
+| 3 | Deduplication | Unique stop count + multi-package report |
+| 4 | CSV export | UTF-8 BOM file importable into Google My Maps |
+| 5 | Basic UI | Working PyQt6 window with drag-and-drop |
+| 6 | Packaging | Single `.exe` via PyInstaller |
+| 7 | Polish | Error handling, bad PDF warnings, progress indicator |
+
+---
+
+## Agentic Prompt
+
+Use this prompt verbatim with Claude Code or any agentic coding assistant.
+
+---
+
+```
+You are building a Windows desktop application called "GATI Route Manager"
+for Intelcom Dragonfly delivery operations.
+
+## Context
+
+The user receives daily PDF manifests from Intelcom. Each PDF contains one or
+more delivery routes. Each route is identified by a code like GATI9200, GATI9250,
+GATI9275, etc. Each route lists packages sequentially (Seq 1 to N) with fields:
+Code, Tracking ID, Seq, Address, Dimensions, Signature.
+
+The user needs to:
+1. Load the PDF and see which routes it contains.
+2. Select one or more routes to export.
+3. Get a Google My Maps-compatible CSV for each selected route.
+4. See a stop summary: total packages vs unique physical stops
+   (multiple packages at the same address = 1 stop).
+
+## Tech stack
+
+- Language: Python 3.11
+- UI: PyQt6
+- PDF parsing: pdfplumber
+- Output: Python csv module (UTF-8 BOM encoding, essential for Google Maps)
+- Packaging target: single Windows .exe via PyInstaller
+
+## PDF format knowledge
+
+The PDFs are generated by Intelcom Dragonfly. Each page header contains:
+  "Intelcom Courrier Projet Amazon - ON2"
+  "From YYYY-MM-DD 00:00 to YYYY-MM-DD 23:59"
+  Route code on its own line: e.g. "GATI9275"
+  "Route - GATI9275   Total number of packages : 121"
+
+Each data row contains (sometimes split across lines due to PDF rendering):
+  Code (D210023...) | Tracking ID (INTLCMI...) | Seq (integer) |
+  Address (street city province postal CA) | Dimensions | Signature
+
+Addresses always end with "QC J8XXXXX CA" (Quebec postal code + CA).
+City is always Gatineau or L'Ange-Gardien or Cantley.
+The address field may include apartment info like "App. 3", "App. 321", "#4".
+
+## Parsing strategy
+
+Use pdfplumber to extract text page by page.
+Detect route boundaries by looking for lines matching r"^GATI\d{4}$".
+For each route, extract lines between its header and the next route header.
+Parse each package row with a regex that captures:
+  - Code: r"D\d{12}"
+  - Tracking ID: r"INTLCMI\d{9}"
+  - Seq: integer
+  - Address: everything between the tracking ID and the dimensions
+  - Postal code: r"J[0-9][A-Z][0-9][A-Z][0-9]" (strip spaces)
+
+Build a Full Address string: "{street}, {city}, QC {postal}, Canada"
+Normalize city capitalization.
+Clean up address artifacts: remove stray "CA" at end, collapse whitespace.
+
+## Deduplication logic
+
+A "unique stop" is defined as a unique (normalized_street, postal_code) pair.
+Normalize: lowercase, strip, collapse spaces.
+Count packages per unique stop.
+Flag any stop with more than 1 package as a "multi-package stop".
+
+## CSV output format
+
+Columns (in this order):
+  Stop, Full Address, Street, City, Province, Postal Code,
+  Tracking ID, Package Code, Dimensions
+
+Encoding: UTF-8 with BOM (utf-8-sig) — required for Google My Maps.
+Line endings: \r\n (Windows standard).
+One row per package (not per stop), so Google Maps geocodes each one.
+Filename: Gatineau_{ROUTE_CODE}_Route.csv
+
+## Summary output format
+
+Plain text file: Gatineau_{ROUTE_CODE}_Summary.txt
+
+Contents:
+  Route: GATI9275
+  Date: 2026-06-27
+  Total packages: 121
+  Unique stops: 101
+  Multi-package stops: 20 packages saved
+
+  Multi-package stop detail:
+  [5 pkgs] 27 rue du Lacaune, Gatineau QC J8V3R9 — seq 5, 6, 7, 8, 9
+  [5 pkgs] 2015 rue Saint-Louis, Gatineau QC J8T4H6 — seq 109, 110, 111, 112, 113
+  ...
+
+## UI requirements
+
+Window title: "GATI Route Manager"
+Window size: 700 × 520 px minimum, resizable.
+
+Components:
+  1. Drop zone (top): large dashed rectangle. Text: "Drop PDF manifest here
+     or click to browse". Accepts .pdf files. On drop/select, trigger parsing.
+  2. Route list (middle): checkboxes, one per detected route.
+     Each shows: route code + package count. All checked by default.
+  3. Export button: "Export selected routes". Disabled until at least one route
+     is checked. On click, open a folder picker, then write the CSV and summary
+     files. Show a progress bar during export.
+  4. Results panel (bottom): after export, show per-route summary inline:
+     "GATI9275 — 121 packages / 101 stops". List multi-package stops.
+  5. "Open output folder" button: opens Windows Explorer at the output path.
+
+## Error handling
+
+- If the PDF cannot be parsed (wrong format, corrupted): show a clear error
+  dialog: "Could not read this PDF. Make sure it is an Intelcom manifest."
+- If no routes are detected: "No GATI routes found in this file."
+- If a route has fewer than 1 package: warn but don't crash.
+- Wrap all file I/O in try/except and surface errors in the UI, never silently.
+
+## Project structure
+
+gati_route_manager/
+├── main.py              # Entry point, launches PyQt6 app
+├── ui/
+│   └── main_window.py   # MainWindow class, all UI logic
+├── core/
+│   ├── pdf_parser.py    # PDF reading and route extraction
+│   ├── deduplicator.py  # Stop counting and multi-package detection
+│   └── csv_exporter.py  # CSV and summary file writing
+├── models/
+│   └── route.py         # Route and Package dataclasses
+├── requirements.txt
+└── build.bat            # PyInstaller one-liner for .exe packaging
+
+## Coding standards
+
+- Use Python dataclasses for Route and Package models.
+- All functions must have type hints.
+- No global state; pass data explicitly between modules.
+- Keep ui/ free of business logic; ui calls core functions only.
+- Write at least one unit test per core module using pytest.
+- The .exe produced by PyInstaller must be a single file (--onefile flag).
+
+## Deliverables
+
+Build the complete application. When done, confirm:
+  ✓ PDF parsing works on the sample data (GATI9275, 121 packages)
+  ✓ CSV output is UTF-8 BOM encoded and passes Google My Maps import
+  ✓ Unique stop count matches expected (101 stops for GATI9275)
+  ✓ UI drag-and-drop works on Windows 10/11
+  ✓ PyInstaller build produces a working .exe with no external dependencies
+```
+
+---
+
+## Sample data to test against
+
+Use these known-good numbers to validate the build:
+
+| Route | Date | Packages | Unique Stops |
+|-------|------|----------|--------------|
+| GATI9200 | 2026-06-20 | 120 | ~114 |
+| GATI9250 | 2026-06-27 | 121 | TBD |
+| GATI9255 | 2026-06-27 | 119 | TBD |
+| GATI9275 | 2026-06-27 | 121 | 101 |
+
+Multi-package stops confirmed for GATI9275:
+- 27 rue du Lacaune J8V3R9 → 5 packages (seq 5–9)
+- 2015 rue Saint-Louis J8T4H6 → 5 packages (seq 109–113)
+- 73 rue Stephane App. 3 J8V1T8 → 3 packages (seq 22–24)
+- 254 rue de Cannes J8T7A5 → 3 packages (seq 54–56)
+- 17 rue Demaison J8V1Y5 → 3 packages (seq 81–83)
+- 2 rue de Monte-Carlo J8T6R5 → 3 packages (seq 100–102)
+- 79 rue Colette J8V2A5 → 2 packages (seq 27–28)
+- 70 rue du Mont-Luc J8V2B1 → 2 packages (seq 43–44)
+- 448 rue de Rayol J8T7C3 → 2 packages (seq 60–61)
+- 14 rue de Rouen J8T1G8 → 2 packages (seq 119–120)

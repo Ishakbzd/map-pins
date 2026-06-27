@@ -1,0 +1,59 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "gati_route_manager/**"
+      - ".github/workflows/build-apk.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            autoconf automake build-essential ccache cmake curl \
+            git libffi-dev libltdl-dev libssl-dev libtool \
+            ninja-build openjdk-17-jdk python3-pip unzip zip zlib1g-dev
+        shell: bash
+
+      - name: Cache Buildozer (Android SDK/NDK)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            gati_route_manager/.buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('gati_route_manager/buildozer.spec') }}
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip buildozer cython
+        shell: bash
+
+      - name: Build APK with Buildozer
+        run: |
+          cd gati_route_manager
+          buildozer android debug 2>&1
+        shell: bash
+        env:
+          BUILD_OZER_CI: "1"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GATI-Route-Manager-APK
+          path: gati_route_manager/bin/*.apk
+          if-no-files-found: error

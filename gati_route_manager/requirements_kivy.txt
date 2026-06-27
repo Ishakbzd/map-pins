@@ -1,0 +1,5 @@
+kivy>=2.3.0
+plyer>=2.1
+pdfplumber>=0.11
+folium>=0.18
+geopy>=2.4

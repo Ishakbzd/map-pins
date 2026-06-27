@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GATI Route Manager</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5/dist/MarkerCluster.Default.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #000; }
+.container { max-width: 960px; margin: 0 auto; padding: 16px; }
+h1 { text-align: center; font-size: 24px; color: #2c3e50; margin-bottom: 16px; }
+
+.drop-zone { border: 3px dashed #bbb; border-radius: 12px; padding: 32px; text-align: center; background: #fff; cursor: pointer; transition: .2s; margin-bottom: 16px; }
+.drop-zone.dragover { border-color: #4a90d9; background: #e8f0fe; }
+.drop-zone.has-file { border-color: #2ecc71; background: #eafaf1; }
+.drop-zone p { color: #666; font-size: 15px; }
+.drop-zone .file-name { color: #2c3e50; font-weight: bold; font-size: 16px; }
+
+.loading { display: none; text-align: center; padding: 16px; color: #666; }
+.loading.active { display: block; }
+.spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid #ddd; border-top-color: #4a90d9; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; margin-right: 8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error { display: none; background: #fde8e8; color: #c0392b; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+.error.active { display: block; }
+
+#section-routes { display: none; }
+#section-routes.active { display: block; }
+
+.route-card { background: #fff; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); display: flex; align-items: center; gap: 12px; }
+.route-card input[type="checkbox"] { width: 18px; height: 18px; accent-color: #4a90d9; cursor: pointer; }
+.route-card .code { font-weight: bold; font-size: 15px; flex: 1; }
+.route-card .stats { color: #666; font-size: 13px; white-space: nowrap; }
+.route-card .export-btn { padding: 6px 14px; font-size: 13px; border: 1px solid #4a90d9; border-radius: 4px; background: #fff; color: #4a90d9; cursor: pointer; transition: .15s; }
+.route-card .export-btn:hover { background: #4a90d9; color: #fff; }
+
+.actions { display: flex; gap: 12px; justify-content: center; margin: 16px 0; flex-wrap: wrap; }
+.btn { padding: 10px 28px; font-size: 15px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; transition: .15s; }
+.btn-primary { background: #4a90d9; color: #fff; }
+.btn-primary:hover { background: #357abd; }
+.btn-primary:disabled { background: #b0b0b0; cursor: default; }
+.btn-secondary { background: #fff; color: #4a90d9; border: 1px solid #4a90d9; }
+.btn-secondary:hover { background: #e8f0fe; }
+
+.progress { display: none; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 14px; color: #555; }
+.progress.active { display: flex; }
+.progress-bar { flex: 1; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: #4a90d9; border-radius: 4px; transition: width .3s; width: 0%; }
+.progress-text { white-space: nowrap; min-width: 60px; text-align: right; }
+
+.tabs { display: flex; gap: 0; margin-bottom: 0; }
+.tab-btn { padding: 8px 20px; font-size: 13px; border: 1px solid #ddd; border-bottom: none; border-radius: 4px 4px 0 0; background: #f0f0f0; cursor: pointer; color: #000; }
+.tab-btn.active { background: #fff; font-weight: bold; }
+.tab-content { display: none; background: #fff; border: 1px solid #ddd; border-radius: 0 4px 4px 4px; padding: 12px; min-height: 300px; }
+.tab-content.active { display: block; }
+#map { height: 500px; border-radius: 4px; }
+.summary-text { font-family: 'Courier New', monospace; font-size: 13px; white-space: pre-wrap; color: #000; line-height: 1.5; }
+
+#footer-actions { display: none; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+#footer-actions.active { display: flex; }
+
+@media (max-width: 600px) {
+  .container { padding: 8px; }
+  .route-card { flex-wrap: wrap; }
+  .route-card .stats { white-space: normal; }
+  #map { height: 350px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>GATI Route Manager</h1>
+
+  <div class="drop-zone" id="dropZone">
+    <p>Drop PDF manifest here or click to browse</p>
+    <input type="file" id="fileInput" accept=".pdf" style="display:none">
+  </div>
+
+  <div class="loading" id="loading">
+    <span class="spinner"></span> Parsing PDF...
+  </div>
+
+  <div class="error" id="error"></div>
+
+  <div id="section-routes">
+    <div id="routeList"></div>
+
+    <div class="progress" id="progress">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <span class="progress-text" id="progressText">0%</span>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="showMapBtn" disabled>Preview on map</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="map">Map</button>
+      <button class="tab-btn" data-tab="summary">Summary</button>
+    </div>
+
+    <div class="tab-content active" id="tab-map"><div id="map"></div></div>
+    <div class="tab-content" id="tab-summary"><div class="summary-text" id="summaryText"></div></div>
+
+    <div id="footer-actions">
+      <button class="btn btn-secondary" id="openMapsBtn">Open in Google My Maps</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5/dist/leaflet.markercluster.js"></script>
+<script>
+let fileId = null;
+let routeData = [];
+let map = null;
+let markersLayer = null;
+
+const COLORS = ['#e74c3c','#3498db','#2ecc71','#9b59b6','#f39c12','#1abc9c','#e67e22','#2980b9'];
+
+// --- DOM refs ---
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const loading = document.getElementById('loading');
+const error = document.getElementById('error');
+const section = document.getElementById('section-routes');
+const routeList = document.getElementById('routeList');
+const showMapBtn = document.getElementById('showMapBtn');
+const progress = document.getElementById('progress');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
+const summaryText = document.getElementById('summaryText');
+const tabBtns = document.querySelectorAll('.tab-btn');
+const tabContents = document.querySelectorAll('.tab-content');
+
+// --- Upload ---
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) uploadFile(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) uploadFile(fileInput.files[0]);
+});
+
+async function uploadFile(file) {
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    showError('File must be a PDF.');
+    return;
+  }
+  hideError();
+  loading.classList.add('active');
+  dropZone.classList.add('has-file');
+  dropZone.querySelector('p').textContent = file.name;
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const res = await fetch('/parse', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) { showError(data.error); return; }
+
+    fileId = data.file_id;
+    routeData = data.routes;
+    renderRoutes(routeData);
+    section.classList.add('active');
+    showMapBtn.disabled = false;
+  } catch (e) {
+    showError('Network error: ' + e.message);
+  } finally {
+    loading.classList.remove('active');
+  }
+}
+
+function renderRoutes(routes) {
+  routeList.innerHTML = '';
+  routes.forEach((r, i) => {
+    const div = document.createElement('div');
+    div.className = 'route-card';
+    div.innerHTML = `
+      <input type="checkbox" checked data-code="${r.code}">
+      <span class="code">${r.code}</span>
+      <span class="stats">${r.total_packages} pkgs / ${r.unique_stops} stops</span>
+      <button class="export-btn" data-code="${r.code}">CSV</button>
+    `;
+    div.querySelector('.export-btn').addEventListener('click', () => downloadCsv(r.code));
+    routeList.appendChild(div);
+  });
+}
+
+function getSelectedCodes() {
+  return [...document.querySelectorAll('.route-card input:checked')].map(cb => cb.dataset.code);
+}
+
+// --- CSV download ---
+async function downloadCsv(code) {
+  const a = document.createElement('a');
+  a.href = `/export/${fileId}/${code}`;
+  a.download = '';
+  a.click();
+}
+
+// --- Map preview ---
+showMapBtn.addEventListener('click', async () => {
+  const codes = getSelectedCodes();
+  if (!codes.length) return;
+
+  showMapBtn.disabled = true;
+  showProgress(true);
+
+  try {
+    const res = await fetch(`/geocode/${fileId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ routes: codes }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showError(data.error); return; }
+
+    showProgress(false);
+    renderMap(data.routes);
+    renderSummary(data.routes);
+    switchTab('map');
+  } catch (e) {
+    showError('Geocoding error: ' + e.message);
+  } finally {
+    showMapBtn.disabled = false;
+  }
+});
+
+function renderMap(routes) {
+  if (!map) {
+    map = L.map('map').setView([45.48, -75.65], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+  }
+
+  if (markersLayer) map.removeLayer(markersLayer);
+
+  const allBounds = [];
+  markersLayer = L.markerClusterGroup({
+    maxClusterRadius: 50,
+    spiderfyOnMaxZoom: true,
+    disableClusteringAtZoom: 17,
+  });
+
+  routes.forEach((route, i) => {
+    const color = COLORS[i % COLORS.length];
+    const fg = L.featureGroup.subGroup(markersLayer);
+
+    route.stops.forEach((stop) => {
+      const popup = `<b>${stop.street}</b><br>${stop.city}, QC ${stop.postal}<br><small>Seq ${stop.seq}</small>`;
+      const marker = L.circleMarker([stop.lat, stop.lng], {
+        radius: 7,
+        color: color,
+        fillColor: color,
+        fillOpacity: 0.85,
+        weight: 2,
+      }).bindPopup(popup).bindTooltip(stop.street);
+      fg.addLayer(marker);
+      allBounds.push([stop.lat, stop.lng]);
+    });
+
+    markersLayer.addLayer(fg);
+  });
+
+  map.addLayer(markersLayer);
+  if (allBounds.length) map.fitBounds(allBounds, { padding: [30, 30] });
+
+  L.control.layers(null, null, { collapsed: true }).addTo(map);
+}
+
+function renderSummary(routes) {
+  let text = '';
+  routes.forEach(r => {
+    text += `${r.code} -- ${r.total_packages} packages / ${r.unique_stops} stops\n`;
+  });
+  summaryText.textContent = text;
+}
+
+// --- Tab switching ---
+tabBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    switchTab(tab);
+  });
+});
+
+function switchTab(tab) {
+  tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  tabContents.forEach(c => c.classList.toggle('active', c.id === 'tab-' + tab));
+  if (tab === 'map' && map) setTimeout(() => map.invalidateSize(), 100);
+}
+
+// --- Helpers ---
+function showProgress(active) {
+  progress.classList.toggle('active', active);
+  if (active) {
+    progressFill.style.width = '0%';
+    progressText.textContent = 'Geocoding...';
+  }
+}
+
+function showError(msg) {
+  error.textContent = msg;
+  error.classList.add('active');
+}
+
+function hideError() {
+  error.classList.remove('active');
+}
+
+// Open in Google My Maps
+document.getElementById('openMapsBtn').addEventListener('click', () => {
+  window.open('https://mymaps.google.com', '_blank');
+});
+</script>
+</body>
+</html>

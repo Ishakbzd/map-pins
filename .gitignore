@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# PyInstaller build outputs
+gati_route_manager/build/
+gati_route_manager/dist/
+*.spec
+
+# Buildozer
+gati_route_manager/.buildozer/
+gati_route_manager/bin/
+
+# Geocoding cache
+geocode_cache.json
+gati_route_manager/geocode_cache.json
+
+# Temp files
+gati_route_manager/test_map.html
+*.tmp
+
+# OS
+Thumbs.db
+.DS_Store

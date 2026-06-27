@@ -1,0 +1,134 @@
+BoxLayout:
+    orientation: 'vertical'
+    padding: [16, 16, 16, 16]
+    spacing: 12
+    canvas.before:
+        Color:
+            rgba: 0.95, 0.95, 0.95, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: 12
+        size_hint_y: None
+        height: self.minimum_height
+
+        # Title
+        Label:
+            text: 'GATI Route Manager'
+            font_size: '22sp'
+            bold: True
+            color: 0.17, 0.24, 0.31, 1
+            size_hint_y: None
+            height: dp(50)
+
+        # File selection area
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint_y: None
+            height: dp(50)
+            spacing: 8
+
+            Button:
+                id: browse_btn
+                text: 'Select PDF manifest'
+                size_hint_x: 0.4
+                background_color: 0.29, 0.56, 0.85, 1
+                color: 1, 1, 1, 1
+                font_size: '14sp'
+                on_release: app.browse_file()
+
+            Label:
+                id: file_label
+                text: 'No file selected'
+                color: 0.3, 0.3, 0.3, 1
+                halign: 'left'
+                valign: 'middle'
+                text_size: self.size
+                size_hint_x: 0.6
+
+        # Route list section
+        Label:
+            id: route_header
+            text: 'Routes found in this file:'
+            font_size: '14sp'
+            bold: True
+            color: 0.3, 0.3, 0.3, 1
+            size_hint_y: None
+            height: dp(24)
+
+        ScrollView:
+            size_hint_y: None
+            height: dp(150)
+            do_scroll_x: False
+            do_scroll_y: True
+
+            GridLayout:
+                id: route_list_box
+                cols: 1
+                size_hint_y: None
+                height: self.minimum_height
+                spacing: 2
+
+        # Export button
+        Button:
+            id: export_btn
+            text: 'Export & preview on map'
+            size_hint_y: None
+            height: dp(48)
+            disabled: True
+            background_color: 0.29, 0.56, 0.85, 1
+            color: 1, 1, 1, 1
+            font_size: '15sp'
+            bold: True
+            on_release: app.on_export()
+
+        # Progress bar
+        ProgressBar:
+            id: progress_bar
+            size_hint_y: None
+            height: dp(20)
+            max: 100
+            value: 0
+
+        # Status text
+        Label:
+            id: status_label
+            text: ''
+            color: 0.3, 0.3, 0.3, 1
+            font_size: '12sp'
+            size_hint_y: None
+            height: dp(20)
+
+        # Results
+        ScrollView:
+            size_hint_y: None
+            height: dp(200)
+            do_scroll_x: False
+            do_scroll_y: True
+
+            Label:
+                id: results_label
+                text: ''
+                color: 0, 0, 0, 1
+                font_size: '13sp'
+                halign: 'left'
+                valign: 'top'
+                text_size: self.width, None
+                size_hint_y: None
+                height: max(self.texture_size[1], dp(40))
+
+        # Open map button
+        Button:
+            id: open_map_btn
+            text: 'Open map in browser'
+            size_hint_y: None
+            height: dp(48)
+            disabled: True
+            background_color: 0.2, 0.7, 0.3, 1
+            color: 1, 1, 1, 1
+            font_size: '15sp'
+            bold: True
+            on_release: app.open_map()
